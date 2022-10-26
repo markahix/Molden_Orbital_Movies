@@ -16,3 +16,5 @@ To execute VMD script:
 Generates frames named `temp.#####.tga` using the TachyonLOptixInternal renderer with VMD, numbered by frame.  You can use ImageMagick or GIMP to generate a video/animated GIF from these frames.
 
 ---
+
+![](https://github.com/Molden_Orbital_Movies/Molden_Orbital_Movies_Example.gif)
