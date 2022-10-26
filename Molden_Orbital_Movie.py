@@ -58,7 +58,20 @@ def Write_Phase_Swapped_Molden(moldenfile,sign_array):
                         templine[1] = "-"+templine[1].strip()
                 newline = f"{templine[0]:>5}{float(templine[1]):>11.05f}\n"
                 f.write(newline)
-                
+
+def VMDInitialize(inputfilename):
+    with open(inputfilename,"w") as f:
+        f.write("display update on\n")
+        f.write("color add item Display Background white\n")
+        f.write("color Display Background white\n")
+        f.write("display projection perspective \n")
+        f.write("display culling off\n")
+        f.write("axes location off\n")
+        f.write("display rendermode Normal\n")
+        f.write("display depthcue off\n")
+        f.write("display resize 1920 1080\n")
+    return None
+
 def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2):
     vmd_color_ids={"blue":0,"red":1,"gray":2,"orange":3,"yellow":4,
                    "tan":5,"silver":6,"green":7,"white":8,"pink":9,
@@ -70,7 +83,7 @@ def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
     if color2 not in [key for key in vmd_color_ids.keys()]:
         print(f"Color {color2} not found in VMD dictionary.  Defaulting to red for color 2.")
         color2 = "red"
-    with open("orbital_trajectory.vmd","w") as f:
+    with open("orbital_trajectory.vmd","a") as f:
         num_moldens_loaded = 0
         for moldenfile in ORDERED_MOLDEN_FILELIST:
             if num_moldens_loaded == 0:
@@ -112,19 +125,18 @@ def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
         
 def VMD_Orbital_Trajectory(molden_location,orbital_number,color1="blue",color2="red"):
     ORDERED_MOLDEN_FILELIST=[]
-    output_folder = "phased_molden_files/"
     startdir = os.getcwd()
     os.chdir(molden_location)
     file_list = G("*.molden.*")
     file_list.sort(key=os.path.getmtime)
     n_moldens = len(file_list)
-    os.makedirs(output_folder,exist_ok=True)
-    os.system(f"cp *.molden.* {output_folder}")
+    os.makedirs("phased_molden_files/",exist_ok=True)
+    os.system(f"cp *.molden.* phased_molden_files/")
     for i in range(n_moldens-1):
         OLD_MOL_FILE=file_list[i]
-        NEW_MOL_FILE=output_folder+file_list[i+1]
+        NEW_MOL_FILE="phased_molden_files/"+file_list[i+1]
         if i > 0:
-            OLD_MOL_FILE=output_folder+file_list[i]
+            OLD_MOL_FILE="phased_molden_files/"+file_list[i]
         print(OLD_MOL_FILE)
         print(NEW_MOL_FILE)
         print("----")
@@ -132,9 +144,31 @@ def VMD_Orbital_Trajectory(molden_location,orbital_number,color1="blue",color2="
         Write_Phase_Swapped_Molden(NEW_MOL_FILE,sign_array)
         ORDERED_MOLDEN_FILELIST.append(OLD_MOL_FILE)
     ORDERED_MOLDEN_FILELIST.append(NEW_MOL_FILE)
+    VMDInitialize("orbital_trajectory.vmd")
     Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
+    VMDTrajectoryMovie("orbital_trajectory.vmd","TachyonLOptiXInternal")
     os.chdir(startdir)
     
+def VMDTrajectoryMovie(inputfilename,renderer):
+    with open(inputfilename,"a") as f:
+        f.write("proc make_trajectory_movie {} {\n")
+        f.write("\t# get the number of frames in the movie\n")
+        f.write("\tset num [molinfo top get numframes]\n")
+        f.write("\t# loop through the frames\n")
+        f.write("\tfor {set i 0} {$i < $num} {incr i 1} {\n")
+        f.write("\t\t# go to the given frame\n")
+        f.write("\t\tanimate goto $i\n")
+        f.write("\t\t\t\t# for the display to update\n")
+        f.write("\t\t\t\tdisplay update\n")
+        f.write("\t\t# take the picture\n")
+        f.write(f"\t\tset filename temp.[format \"%05d\" [expr $i/1]].tga\n")
+        f.write(f"\t\trender {renderer} $filename\n")
+        f.write("\t}\n")
+        f.write("}\n")
+        f.write("make_trajectory_movie\n")
+        f.write("quit\n")
+        f.close()
+    return None
     
 if __name__ == "__main__":
     import argparse
