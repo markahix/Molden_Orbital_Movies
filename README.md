@@ -17,4 +17,4 @@ Generates frames named `temp.#####.tga` using the TachyonLOptixInternal renderer
 
 ---
 
-![](https://github.com/Molden_Orbital_Movies/Molden_Orbital_Movies_Example.gif)
+![](Molden_Orbital_Movie_Example.gif)
