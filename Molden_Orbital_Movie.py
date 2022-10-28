@@ -124,7 +124,7 @@ def VMDInitialize(inputfilename):
         f.write("display resize 1920 1080\n")
     return None
 
-def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2):
+def Write_VMD_Command_File(vmdcommandfile,ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2):
     # With the list of Molden files, a specified orbital number, and two color keywords, 
     # we generate the VMD input commands.
     
@@ -141,7 +141,7 @@ def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
         print(f"Color {color2} not found in VMD dictionary.  Defaulting to red for color 2.")
         color2 = "red"
         
-    with open("orbital_trajectory.vmd","a") as f:
+    with open(vmdcommandfile,"a") as f:
         num_moldens_loaded = 0
         ## Iterate through ordered molden filelist
         for moldenfile in ORDERED_MOLDEN_FILELIST:
@@ -193,7 +193,7 @@ def Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
         f.write(f"mol smoothrep top 1 0\n")
         f.write("mol drawframes top 1 {now}\n")
         
-def VMD_Orbital_Trajectory(molden_location,orbital_number,color1="blue",color2="red"):
+def VMD_Orbital_Trajectory(molden_location,orbital_number,vmdcommandfile,x,y,z,enlarge,color1="blue",color2="red"):
     # Main Job Function.
     # Takes the location of the molden files (assumed to be in the same directory, such as a scratch folder).
     # desired orbital number, and color choices (defaulted to blue/red).
@@ -230,21 +230,31 @@ def VMD_Orbital_Trajectory(molden_location,orbital_number,color1="blue",color2="
     ORDERED_MOLDEN_FILELIST.append(NEW_MOL_FILE)
     
     ## Initialize the VMD input file with the display settings.
-    VMDInitialize("orbital_trajectory.vmd")
+    VMDInitialize(vmdcommandfile)
     
     ## Add the molden files and representations
-    Write_VMD_Command_File(ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
+    Write_VMD_Command_File(vmdcommandfile,ORDERED_MOLDEN_FILELIST,orbital_number,color1,color2)
     
     ## Add the moviemaker VMD function and call it so that VMD 
     ## automatically renders the video on completion of file I/O.
     ## Probably not ideal since the orientation of the molecule in 
     ## space won't necessarily be what you want...
-    VMDTrajectoryMovie("orbital_trajectory.vmd","TachyonLOptiXInternal")
+    VMDRotateStructure(vmdcommandfile,x,y,z,enlarge)
+    VMDTrajectoryMovie(vmdcommandfile,"TachyonLOptiXInternal")
     os.chdir(startdir)
-    
+
+def VMDRotateStructure(inputfilename,x,y,z,enlarge):
+    with open(inputfilename,"a") as f:
+        f.write(f"rotate x by {x}\n")
+        f.write(f"rotate y by {y}\n")
+        f.write(f"rotate z by {z}\n")
+        f.write(f"scale by {enlarge}\n")
+
 def VMDTrajectoryMovie(inputfilename,renderer):
     # Tcl code for VMD to generate a set of frames from a trajectory.
     with open(inputfilename,"a") as f:
+        f.write("## Uncomment lines below to change initial rotation/orientation of molecule before rendering\n")
+        f.write(f"## then rerun this file with 'vmd -e {inputfilename}'\n")
         f.write("proc make_trajectory_movie {} {\n")
         f.write("\t# get the number of frames in the movie\n")
         f.write("\tset num [molinfo top get numframes]\n")
@@ -255,7 +265,7 @@ def VMDTrajectoryMovie(inputfilename,renderer):
         f.write("\t\t\t\t# for the display to update\n")
         f.write("\t\t\t\tdisplay update\n")
         f.write("\t\t# take the picture\n")
-        f.write(f"\t\tset filename temp.[format \"%05d\" [expr $i/1]].tga\n")
+        f.write(f"\t\tset filename VMD_Images/temp.[format \"%05d\" [expr $i/1]].tga\n")
         f.write(f"\t\trender {renderer} $filename\n")
         f.write("\t}\n")
         f.write("}\n")
@@ -267,16 +277,31 @@ if __name__ == "__main__":
     # Since argparse is beefy, only load it up if it's actually getting used, 
     # such as when this script is called from the command line.
     import argparse
-    
+    import subprocess
     ## construct the argument parser and add arguments.
     parser = argparse.ArgumentParser()
     parser.add_argument("-p","--path",dest="path",help="/path/to/directory/with/molden/files",required=True)
     parser.add_argument("-n","--number",dest="number",help="Orbital number desired for visualization",required=True)
     parser.add_argument("--color1",dest="color1",help="VMD-available color for first phase of orbitals",default="blue")
     parser.add_argument("--color2",dest="color2",help="VMD-available color for second phase of orbitals",default="red")
-    
+    parser.add_argument("-v","--vmd",dest="vmd",help="VMD command file output",default="orbital_trajectory.vmd")
+    parser.add_argument("-x",dest="x_rotate",help="angle in degrees to rotate structure about x-axis before rendering.",default=0)
+    parser.add_argument("-y",dest="y_rotate",help="angle in degrees to rotate structure about y-axis before rendering.",default=0)
+    parser.add_argument("-z",dest="z_rotate",help="angle in degrees to rotate structure about z-axis before rendering.",default=0)
+    parser.add_argument("-e","--enlarge",dest="enlarge",help="Scaling multiplier (makes molecule larger/smaller in view)",default=1.0)
+    parser.add_argument("-o","--output",dest="output",help="OutputMovie.mp4",default="./orbitals.mp4")
+
     ## Parse those args.
     args = parser.parse_args()
     
     ## Call the main job
-    VMD_Orbital_Trajectory(args.path,int(args.number),color1=args.color1,color2=args.color2)
+    VMD_Orbital_Trajectory(os.path.abspath(args.path),int(args.number),args.vmd,args.x_rotate,args.y_rotate,args.z_rotate,args.enlarge,color1=args.color1,color2=args.color2)
+    with open(args.vmd,"a") as f:
+        f.write("quit\n")
+    subprocess.call("mkdir -p VMD_Images/",shell=True)
+    subprocess.call(f"vmd -e {args.vmd}",shell=True)
+    outputmovie = os.path.abspath(args.output)
+    os.chdir("VMD_Images/")
+    subprocess.call("for i in $(ls temp.*.tga); do convert $i ${i%.tga}.png; rm $i; done",shell=True)
+    subprocess.call(f"ffmpeg -y -r 30 -f image2 -s 1920x1080 -i temp.%05d.png -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\" -vcodec libx264 -crf 5 -pix_fmt yuv420p {outputmovie}",shell=True)
+    os.chdir("../")
